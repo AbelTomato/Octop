@@ -6,6 +6,9 @@
 
 ## [Unreleased]
 
+### 新增
+- Ollama 可指定本地模型下载目录，用于识别已下载模型（#1266）
+
 ### 修复
 - 暗色主题下知识库 Markdown 预览白底白字导致正文不可见（补上未定义的 `--fn-bg-container` 主题变量，Fixes #1215）。
 - 安装或启用仍 `import harness_agent` 的旧插件时，不再因运行时包改名为 `octop_harness` 而失败。
