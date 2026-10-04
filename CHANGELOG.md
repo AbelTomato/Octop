@@ -25,6 +25,7 @@
 - 登录页在用户名框下提示可用用户名或邮箱（目录账号与本地账号同一表单）。
 
 ### 修复
+- 桌面覆盖安装用与服务器 `parse_version` 相同的 PEP 440 规则比较内置与持久运行时，修复同一发布号下 beta 递增（如 `1.0.2b4` → `1.0.2b5`）及预发布转正式版被当成相等、继续加载旧运行时的问题；备份、替换失败回退和不降级保护不变。
 - Postgres 存储后端改为拆字段映射，不再把 URI 当作 `connection_string` 传给 `PostgresConfig`。
 - S3 / Postgres 等旧协议 backend 适配 `ReadResult` / `LsResult`，专家启动与管理端目录树不再因 `'str'.error` 或 `als` 未实现而失败。
 - FnOS 本地版关闭时会杀掉占 8089 的整棵进程树（含 `runuser` 外壳留下的 Python），启动被中途杀掉也会收尸；`checkport=false` 让再次启动能回收残留，避免应用中心报「端口被占用」但旧页面仍能打开。
