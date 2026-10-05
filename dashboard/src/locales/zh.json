@@ -292,7 +292,7 @@
   },
   "skillPackages": {
     "title": "技能包",
-    "subtitle": "创建和维护可复用的技能集合，并可挂载到专家。",
+    "subtitle": "创建和维护可复用的技能包，添加技能后挂载到专家",
     "createPackage": "创建技能包",
     "editPackage": "编辑技能包",
     "createPackageHint": "技能包是可共享的技能集合。创建后可添加技能，并在专家上挂载使用。",
@@ -354,7 +354,7 @@
   },
   "knowledgeBases": {
     "title": "知识库",
-    "subtitle": "上传文档建立索引，在对话中检索引用；可按需共享给同实例用户。",
+    "subtitle": "上传文档建立索引，在对话中检索引用，也可共享给同实例用户",
     "featureTitle": "启用知识库",
     "settingsTitle": "知识库设置",
     "settingsLead": "实例级开关。启用后需配置向量模型；关闭后全实例不可使用知识库。",
@@ -4294,7 +4294,7 @@
   },
   "personalization": {
     "title": "个性化",
-    "description": "配置当前智能体的技能、工具、插件、子智能体、通道、人格与记忆。",
+    "description": "配置当前专家的技能、工具、插件、子智能体、通道、人格与记忆",
     "tabs": {
       "skills": "技能",
       "tools": "工具",
@@ -4403,7 +4403,7 @@
   },
   "workbench": {
     "title": "工作台",
-    "description": "终端与浏览器合一，实时查看并接管专家的执行面",
+    "description": "查看并接管专家的终端与浏览器，实时跟进执行过程",
     "tabs": {
       "terminal": "终端",
       "browser": "浏览器"
@@ -4411,7 +4411,7 @@
   },
   "remoteDesktopHub": {
     "title": "远程桌面",
-    "description": "在浏览器中操控服务器桌面或已连接的手机",
+    "description": "在浏览器中操控服务器桌面或已连接的手机，远程完成操作",
     "tabs": {
       "desktop": "服务器",
       "phone": "手机"
@@ -4930,7 +4930,7 @@
   },
   "storage": {
     "pageTitle": "存储管理",
-    "pageSubtitle": "管理存储后端（本地、对象存储、沙箱、数据库），供专家使用",
+    "pageSubtitle": "管理本地、对象存储、沙箱与数据库等存储后端，供专家使用",
     "myStorage": "我的存储",
     "supportedTypes": "支持类型",
     "addBackend": "添加存储后端",
@@ -6186,19 +6186,19 @@
   "pageShell": {
     "experts": {
       "title": "专家",
-      "subtitle": "创建与管理你的 AI 专家，也可从模板库挑选场景一键新建。"
+      "subtitle": "创建与管理你的 AI 专家，也可从模板一键新建"
     },
     "tasks": {
       "title": "自动化",
-      "subtitle": "配置专家定期执行的计划任务"
+      "subtitle": "创建和管理专家定期执行的计划任务，也可立刻手动运行"
     },
     "connectors": {
       "title": "连接器",
-      "subtitle": "账户级连接文档、网盘与邮箱；对话时按需勾选"
+      "subtitle": "连接文档、网盘与邮箱，并在对话中按需使用"
     },
     "acp": {
       "title": "ACP 协作",
-      "subtitle": "配置外部编程专家 Runner（OpenCode、Claude Code 等）"
+      "subtitle": "配置外部编程专家 Runner，并按专家开启协作"
     },
     "skills": {
       "title": "技能",
@@ -6206,99 +6206,99 @@
     },
     "tools": {
       "title": "工具",
-      "subtitle": "启用或关闭当前智能体的内置工具与插件工具"
+      "subtitle": "启用或关闭当前专家的内置工具与插件工具，控制可用能力"
     },
     "tokenUsage": {
       "title": "Token 统计",
-      "subtitle": "账户 Token 消耗总览与多维分析"
+      "subtitle": "查看账户 Token 消耗总览，并按渠道与会话做多维分析"
     },
     "channels": {
       "title": "通道",
-      "subtitle": "IM 渠道与 Webhook 接入管理"
+      "subtitle": "管理 IM 渠道与 Webhook 接入，让专家在外部会话中回复"
     },
     "mbti": {
       "title": "MBTI 人格",
-      "subtitle": "选一个 MBTI 人格类型，或花 3 分钟做个测试，让 TA 拥有独一无二的性格！"
+      "subtitle": "为当前专家选择或测试 MBTI 人格，设定说话风格与性格"
     },
     "subagents": {
       "title": "子智能体",
-      "subtitle": "管理当前专家的子智能体，安装或编辑子智能体技能"
+      "subtitle": "管理当前专家的子智能体，安装或编辑它们的技能"
     },
     "memory": {
       "title": "记忆",
-      "subtitle": "查看 Octop 的记忆内容，也可以顺手整理一下"
+      "subtitle": "查看并整理当前专家记下的记忆，也可处理待确认草稿"
     },
     "workspace": {
       "title": "工作区",
-      "subtitle": "专家的本地文件系统工作空间"
+      "subtitle": "浏览、预览和管理专家工作区中的文件，也可编辑或下载"
     },
     "models": {
       "title": "模型配置",
-      "subtitle": "配置对话模型、生成模型、语音模型与搜索引擎"
+      "subtitle": "配置对话、生成、语音与搜索所用的模型，并设置默认服务"
     },
     "voice": {
       "title": "语音服务",
-      "subtitle": "配置语音识别与朗读服务"
+      "subtitle": "配置语音识别与朗读服务，并选择当前使用的模型"
     },
     "adminUsers": {
       "title": "用户管理",
-      "subtitle": "管理内置账号与登录方式（通用OIDC、飞书、企微、钉钉）"
+      "subtitle": "管理内置账号与登录方式（通用 OIDC、飞书、企微、钉钉）"
     },
     "adminSso": {
       "title": "通用OIDC",
-      "subtitle": "配置 OpenID Connect 身份提供商"
+      "subtitle": "配置 OpenID Connect 身份提供商，用于统一登录"
     },
     "adminStorage": {
       "title": "存储管理",
-      "subtitle": "配置共享存储后端（COS 等）"
+      "subtitle": "配置可供专家使用的存储后端，如对象存储与沙箱"
     },
     "adminAudit": {
       "title": "审计日志",
-      "subtitle": "系统操作与 API 访问记录"
+      "subtitle": "查看系统操作与 API 访问记录，便于排查与审计"
     },
     "adminAgents": {
       "title": "智能体",
-      "subtitle": "查看并管理所有用户的智能体"
+      "subtitle": "查看并管理所有用户的智能体，支持跨用户检索与操作"
     },
     "adminAdvanced": {
       "title": "应用设置",
-      "subtitle": "环境变量、备份、HTTPS 与更新"
+      "subtitle": "管理环境变量、备份、HTTPS 与系统更新"
     },
     "bridge": {
       "title": "云端协同",
-      "subtitle": "连接另一台 Octop，在本机与对端专家对话"
+      "subtitle": "连接另一台 Octop，在本机浏览对端专家并跨实例对话"
     },
     "security": {
       "title": "安全防护",
-      "subtitle": "工具审批、命令防护、文件访问与敏感信息防护"
+      "subtitle": "配置工具审批、命令防护、文件访问与敏感信息防护"
     },
     "adminPlugins": {
       "title": "插件管理",
-      "subtitle": "安装并管理服务器插件；各专家的启用状态在「个性化 → 插件」中配置"
+      "subtitle": "安装并管理服务器插件，各专家可在个性化中单独启用"
     },
     "adminUpdates": {
       "title": "应用更新",
-      "subtitle": "检查版本与系统升级"
+      "subtitle": "检查当前版本并一键升级系统，也可查看安装说明"
     },
     "browser": {
       "title": "浏览器 AI+",
-      "subtitle": "基于 Chromium 的无头浏览器会话"
+      "subtitle": "查看并操控远端无头浏览器，实时接管专家的网页操作"
     },
     "desktop": {
       "title": "远程桌面",
-      "subtitle": "查看并操控 Octop 主机操作系统桌面"
+      "subtitle": "查看并操控 Octop 主机操作系统桌面，远程完成桌面操作"
     },
     "terminal": {
       "title": "终端 AI+",
-      "subtitle": "在浏览器中运行交互式 Shell 终端"
+      "subtitle": "在浏览器中运行交互式 Shell 终端，实时查看专家的命令执行"
     },
     "mobile": {
       "title": "远程手机",
-      "subtitle": "查看并控制已连接的手机或模拟器"
+      "subtitle": "查看并控制已连接的手机或模拟器，远程操作屏幕"
     },
     "adminSharedModels": {
       "title": "共享模型",
-      "subtitle": "面向全体用户共享的模型配置"
+      "subtitle": "管理面向全体用户共享的模型配置，供各专家统一使用"
     }
   },
   "remoteAndroid": {
