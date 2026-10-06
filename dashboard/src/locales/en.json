@@ -1642,6 +1642,7 @@
     "trajectoryCollapsedToolCallMany": "{{count}} tool calls · {{names}}",
     "trajectoryCollapsedTurn": "{{steps}} steps · {{toolCalls}} tool calls",
     "trajectoryInspectorKind": "Kind",
+    "trajectoryInspectorModel": "Model",
     "trajectoryInspectorSource": "Source",
     "trajectoryInspectorStatus": "Status",
     "trajectoryInspectorError": "Error",

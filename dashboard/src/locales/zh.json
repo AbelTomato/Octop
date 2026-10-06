@@ -1642,6 +1642,7 @@
     "trajectoryCollapsedToolCallMany": "{{count}} 次工具调用 · {{names}}",
     "trajectoryCollapsedTurn": "{{steps}} 步 · {{toolCalls}} 次工具调用",
     "trajectoryInspectorKind": "类型",
+    "trajectoryInspectorModel": "模型",
     "trajectoryInspectorSource": "来源",
     "trajectoryInspectorStatus": "状态",
     "trajectoryInspectorError": "错误",
