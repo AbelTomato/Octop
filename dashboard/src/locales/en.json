@@ -1722,7 +1722,8 @@
     "ask_user_question": "Ask the user",
     "generate_image": "Generate image",
     "generate_video": "Generate video",
-    "bilibili_search_anime": "Search Bilibili anime"
+    "bilibili_search_anime": "Search Bilibili anime",
+    "search_arxiv": "Search arXiv papers"
   },
   "toolSettings": {
     "title": "Tool settings",
