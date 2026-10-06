@@ -1428,7 +1428,8 @@
     "subagentPickerEmpty": "No installed subagents",
     "subagentPickerManage": "Manage subagents",
     "modelPickerManage": "Manage models",
-    "sessionWorking": "Working",
+    "sessionWorking": "In progress",
+    "sessionWaiting": "Waiting for you",
     "composerContextLabel": "Message context",
     "contextWindow": {
       "tooltip": "Context {{used}} / {{max}} · {{percent}}% (last model request)",
