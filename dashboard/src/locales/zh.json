@@ -1428,6 +1428,8 @@
     "subagentPickerEmpty": "暂无已安装的子智能体",
     "subagentPickerManage": "管理子智能体",
     "modelPickerManage": "管理模型",
+    "modelPickerSearch": "搜索模型",
+    "modelPickerEmpty": "没有匹配的模型",
     "sessionWorking": "进行中",
     "sessionWaiting": "待确认",
     "composerContextLabel": "消息附加上下文",
