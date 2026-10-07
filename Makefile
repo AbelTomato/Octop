@@ -253,8 +253,13 @@ precommit: format-all lint typecheck test-affected
 # unstaged) so the gate actually fires on a commit's changes.
 .PHONY: test-affected
 test-affected:
+	# Explicit paths avoid testmon's full-suite fallback when no baseline exists.
+ifdef TEST_PATHS
+	$(RUN) pytest $(TEST_PATHS)
+else
 	@echo "[test] pytest (testmon: only tests affected by changes)..."
 	$(RUN) pytest --testmon
+endif
 
 # ─── Quality (frontend) ──────────────────────────────────────────────────────
 
