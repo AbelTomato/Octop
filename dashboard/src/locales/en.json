@@ -218,7 +218,7 @@
     "tasks": "Automation",
     "connectors": "Connectors",
     "bridge": "Cloud collab",
-    "acp": "ACP",
+    "acp": "ACP Collaboration",
     "agents": "Agents",
     "providers": "Providers",
     "models": "Model Management",
@@ -293,7 +293,7 @@
   },
   "skillPackages": {
     "title": "Skill Packages",
-    "subtitle": "Create and maintain reusable skill collections that can be mounted on agents.",
+    "subtitle": "Create and maintain reusable skill packages, add skills, then mount them on experts",
     "createPackage": "Create Skill Package",
     "editPackage": "Edit Skill Package",
     "createPackageHint": "A skill package is a shared collection of skills. After creating it, add skills and mount the package on agents.",
@@ -355,7 +355,7 @@
   },
   "knowledgeBases": {
     "title": "Knowledge Bases",
-    "subtitle": "Index documents for chat retrieval. Optionally share them with users on this instance.",
+    "subtitle": "Upload and index documents for retrieval in chat, and share them if needed",
     "featureTitle": "Enable Knowledge Bases",
     "settingsTitle": "Knowledge base settings",
     "settingsLead": "Instance-wide switch. When on, configure an embedding model. When off, knowledge bases are unavailable for everyone.",
@@ -1429,7 +1429,10 @@
     "subagentPickerEmpty": "No installed subagents",
     "subagentPickerManage": "Manage subagents",
     "modelPickerManage": "Manage models",
-    "sessionWorking": "Working",
+    "modelPickerSearch": "Search models",
+    "modelPickerEmpty": "No matching models",
+    "sessionWorking": "In progress",
+    "sessionWaiting": "Waiting for you",
     "composerContextLabel": "Message context",
     "contextWindow": {
       "tooltip": "Context {{used}} / {{max}} · {{percent}}% (last model request)",
@@ -1642,6 +1645,7 @@
     "trajectoryCollapsedToolCallMany": "{{count}} tool calls · {{names}}",
     "trajectoryCollapsedTurn": "{{steps}} steps · {{toolCalls}} tool calls",
     "trajectoryInspectorKind": "Kind",
+    "trajectoryInspectorModel": "Model",
     "trajectoryInspectorSource": "Source",
     "trajectoryInspectorStatus": "Status",
     "trajectoryInspectorError": "Error",
@@ -1721,7 +1725,8 @@
     "ask_user_question": "Ask the user",
     "generate_image": "Generate image",
     "generate_video": "Generate video",
-    "bilibili_search_anime": "Search Bilibili anime"
+    "bilibili_search_anime": "Search Bilibili anime",
+    "search_arxiv": "Search arXiv papers"
   },
   "toolSettings": {
     "title": "Tool settings",
@@ -1741,7 +1746,7 @@
     "pluginToolCount": "{{count}} tools",
     "tabs": {
       "builtin": "Built-in tools",
-      "acp": "ACP tools",
+      "acp": "ACP Collaboration tools",
       "plugin": "Plugin tools"
     },
     "categories": {
@@ -4295,7 +4300,7 @@
   },
   "personalization": {
     "title": "Personalization",
-    "description": "Configure this agent's skills, tools, plugins, subagents, channels, personality, and memory.",
+    "description": "Configure this expert's skills, tools, plugins, subagents, channels, personality, and memory",
     "tabs": {
       "skills": "Skills",
       "tools": "Tools",
@@ -4404,7 +4409,7 @@
   },
   "workbench": {
     "title": "Workbench",
-    "description": "Terminal and browser surfaces for live interaction with your agents",
+    "description": "View and take over the expert's terminal and browser, and follow execution in real time",
     "tabs": {
       "terminal": "Terminal",
       "browser": "Browser"
@@ -4412,7 +4417,7 @@
   },
   "remoteDesktopHub": {
     "title": "Remote Desktop",
-    "description": "Control the host desktop or a connected phone from the browser",
+    "description": "Control the host desktop or a connected phone from the browser, and work remotely",
     "tabs": {
       "desktop": "Server",
       "phone": "Phone"
@@ -4931,7 +4936,7 @@
   },
   "storage": {
     "pageTitle": "Storage Management",
-    "pageSubtitle": "Manage storage backends (local, object storage, sandboxes, databases) for use by experts",
+    "pageSubtitle": "Manage local, object, sandbox, and database storage backends for experts",
     "myStorage": "My Storage",
     "supportedTypes": "Supported Types",
     "addBackend": "Add Storage Backend",
@@ -5160,7 +5165,6 @@
     "title": "Sign in",
     "subtitle": "An intelligent partner that understands you, helps you, and grows with you",
     "username": "Username or email",
-    "usernameHint": "Use the username or email you set during setup",
     "password": "Password",
     "remember": "Remember me",
     "submit": "Sign in",
@@ -5324,21 +5328,24 @@
     "avatarSamples": "Sample icons",
     "avatarDefault": "Default icon",
     "avatarIconUser": "Member",
-    "avatarIconBusiness": "Business",
-    "avatarIconResearch": "Research",
-    "avatarIconMedical": "Medical",
-    "avatarIconLaptop": "Technical",
-    "avatarIconTeach": "Teaching",
-    "avatarIconDesign": "Design",
-    "avatarIconLearner": "Learner",
+    "avatarIconAdmin": "Admin",
+    "avatarIconStaff": "User",
+    "avatarIconDoctor": "Doctor",
+    "avatarIconNurse": "Nurse",
+    "avatarIconStudent": "Student",
+    "avatarIconTeacher": "Teacher",
+    "avatarIconSupport": "Support",
+    "avatarIconOps": "Operations",
+    "avatarIconFinance": "Finance",
+    "avatarIconBoss": "Executive",
     "avatarIconMember": "Member",
-    "avatarIconAward": "Award",
-    "avatarIconTerminal": "Terminal",
-    "avatarIconPen": "Pen",
-    "avatarIconChart": "Chart",
-    "avatarIconHeadset": "Headset",
-    "avatarIconWrench": "Wrench",
-    "avatarIconScale": "Scale",
+    "avatarIconAward": "Crown",
+    "avatarIconTerminal": "Code",
+    "avatarIconPen": "Quill",
+    "avatarIconChart": "Pie",
+    "avatarIconHeadset": "Megaphone",
+    "avatarIconWrench": "Gear",
+    "avatarIconScale": "Institution",
     "noEmail": "No email",
     "formUserRolePlaceholder": "No role",
     "formUserRoleStale": "Recorded role name: {{name}}. That template was deleted or renamed. Current permissions stay until you pick another role.",
@@ -6185,19 +6192,19 @@
   "pageShell": {
     "experts": {
       "title": "Experts",
-      "subtitle": "Create and manage your AI experts, or pick a scenario template to get started quickly."
+      "subtitle": "Create and manage your AI experts, or spin one up from a template"
     },
     "tasks": {
       "title": "Automation",
-      "subtitle": "Scheduled tasks that run on a cron trigger"
+      "subtitle": "Create and manage scheduled tasks for your experts, or run one immediately"
     },
     "connectors": {
       "title": "Connectors",
-      "subtitle": "Account-level docs, cloud & email — pick per chat"
+      "subtitle": "Connect docs, cloud storage, and email, then use them in chat as needed"
     },
     "acp": {
-      "title": "ACP",
-      "subtitle": "Configure external coding agent runners (OpenCode, Claude Code, …)"
+      "title": "ACP Collaboration",
+      "subtitle": "Configure external coding-agent runners and enable them per expert"
     },
     "skills": {
       "title": "Skills",
@@ -6205,39 +6212,39 @@
     },
     "tools": {
       "title": "Tools",
-      "subtitle": "Enable or disable built-in and plugin tools for this agent"
+      "subtitle": "Enable or disable built-in and plugin tools for this expert, and control available capabilities"
     },
     "tokenUsage": {
       "title": "Token Usage",
-      "subtitle": "Account token overview and multi-dimensional analytics"
+      "subtitle": "View account token usage, and break it down by channel and conversation"
     },
     "channels": {
       "title": "Channels",
-      "subtitle": "IM and webhook integration management"
+      "subtitle": "Manage IM channels and webhook integrations so experts can reply in external chats"
     },
     "mbti": {
       "title": "MBTI Personality",
-      "subtitle": "Pick an MBTI type, or take a 3-minute test to give your agent a unique personality!"
+      "subtitle": "Choose or test an MBTI personality for this expert, and set its speaking style"
     },
     "subagents": {
       "title": "Subagents",
-      "subtitle": "Manage subagents for the current expert — install or edit subagent skills"
+      "subtitle": "Manage this expert's subagents, and install or edit their skills"
     },
     "memory": {
       "title": "Memory",
-      "subtitle": "View conversation history and daily memory"
+      "subtitle": "View and organize the memories this expert has saved, including pending drafts"
     },
     "workspace": {
       "title": "Workspace",
-      "subtitle": "Agent's local filesystem workspace"
+      "subtitle": "Browse, preview, and manage files in this expert's workspace, or edit and download them"
     },
     "models": {
       "title": "Model Management",
-      "subtitle": "Configure conversation, generation, voice, and search engines"
+      "subtitle": "Configure models for chat, generation, voice, and search, and set the default services"
     },
     "voice": {
       "title": "Voice Services",
-      "subtitle": "Configure speech recognition and text-to-speech"
+      "subtitle": "Configure speech recognition and text-to-speech, and choose the active models"
     },
     "adminUsers": {
       "title": "User Management",
@@ -6245,59 +6252,59 @@
     },
     "adminSso": {
       "title": "Generic OIDC",
-      "subtitle": "Configure an OpenID Connect identity provider"
+      "subtitle": "Configure an OpenID Connect identity provider for unified sign-in"
     },
     "adminStorage": {
       "title": "Storage",
-      "subtitle": "Configure shared storage backends (COS etc.)"
+      "subtitle": "Configure storage backends for experts, such as object storage and sandboxes"
     },
     "adminAudit": {
       "title": "Audit Log",
-      "subtitle": "System operations and API access records"
+      "subtitle": "Review system operations and API access records for troubleshooting and audit"
     },
     "adminAgents": {
       "title": "Agents",
-      "subtitle": "View and manage agents across all users"
+      "subtitle": "View and manage agents across all users, with cross-user search and actions"
     },
     "adminAdvanced": {
       "title": "Application Settings",
-      "subtitle": "Environment variables, backup, HTTPS, and updates"
+      "subtitle": "Manage environment variables, backups, HTTPS, and updates"
     },
     "bridge": {
       "title": "Cloud collaboration",
-      "subtitle": "Link another Octop instance and chat with its experts from this dashboard"
+      "subtitle": "Connect another Octop instance, browse its experts, and chat across instances"
     },
     "security": {
       "title": "Security",
-      "subtitle": "Tool approval, command guard, filesystem rules, and PII redaction"
+      "subtitle": "Configure tool approval, command guard, file access, and PII protection"
     },
     "adminPlugins": {
       "title": "Plugin Management",
-      "subtitle": "Install and manage server plugins; configure each agent under Personalization → Plugins"
+      "subtitle": "Install and manage server plugins, then enable them per expert in Personalization"
     },
     "adminUpdates": {
       "title": "Updates",
-      "subtitle": "Check versions and upgrade the system"
+      "subtitle": "Check the current version and upgrade in place, or review install-method guides"
     },
     "browser": {
       "title": "Browser AI+",
-      "subtitle": "Headless Chromium browser session"
+      "subtitle": "View and control a remote headless browser, and take over the expert's web session"
     },
     "desktop": {
       "title": "Remote Desktop",
-      "subtitle": "View and control the Octop host operating system desktop"
+      "subtitle": "View and control the Octop host desktop, and complete tasks remotely"
     },
     "terminal": {
       "title": "Terminal AI+",
-      "subtitle": "Run an interactive shell terminal in the browser"
+      "subtitle": "Run an interactive shell terminal in the browser and watch the expert's commands live"
     },
     "mobile": {
       "title": "Remote Phone",
-      "subtitle": "View and control a connected phone or emulator"
+      "subtitle": "View and control a connected phone or emulator, and operate its screen remotely"
     },
     "adminSharedModels": {
       "title": "Shared Models",
-      "subtitle": "Model presets shared with all users"
+      "subtitle": "Manage model presets shared with all users, so every expert uses the same setup"
     }
   },
   "remoteAndroid": {
