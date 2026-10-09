@@ -551,6 +551,7 @@ See [CHANGELOG.md](CHANGELOG.md) for release history.
 | [Octop Gateway](https://github.com/TencentCloud/octop-gateway) | Multi-platform IM channel bridge |
 | [Octop Memory](https://github.com/TencentCloud/octop-memory) | Hierarchical recall and FTS search |
 | [Octop Browser](https://github.com/TencentCloud/octop-browser) | CDP browser automation with persistent profiles |
+| [Octop Pet](https://github.com/jubaoliang/OctopPet) | A desktop pet for Octop |
 
 ## 💬 Community
 
