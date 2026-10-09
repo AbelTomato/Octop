@@ -1235,36 +1235,78 @@ class AgentManager:
             return OctopError(ErrorCode.AGENT_FAILED, f"agent {agent_id!r} failed to start")
         return OctopError(ErrorCode.AGENT_NOT_RUNNING, f"agent {agent_id!r} not running")
 
-    async def delete_thread_checkpoint(self, agent_id: str, thread_id: str) -> bool:
-        """Best-effort delete of a thread's actual conversation data.
+    def assert_agents_deletable(self, agent_ids: Sequence[str]) -> None:
+        """Raise when any owned agent has an in-flight team job."""
+        for agent_id in agent_ids:
+            self._teams.assert_can_delete_agent(agent_id)
 
-        Octop's own ``thread_registry`` only tracks UI metadata (title,
-        pinned, last_active) — the real message content lives in the
-        agent's LangGraph checkpointer. Deleting only the registry row
-        makes "delete conversation" cosmetic: the content stays in the
-        checkpoint store forever. Callers should call this *before*
-        removing their own thread row, so a checkpoint-delete failure
-        leaves the thread visible/retryable instead of orphaning data
-        with no remaining handle to it.
+    async def delete_thread_checkpoint(self, agent_id: str, thread_id: str) -> None:
+        """Delete a thread's conversation data from the checkpoint store.
 
-        Returns ``True`` when checkpoint data was actually deleted,
-        ``False`` when there was nothing to delete (agent not currently
-        running, or no checkpointer configured for it) — both are normal,
-        expected states, not errors.
+        Uses the live harness checkpointer when the agent is loaded.
+        Otherwise opens the configured SQLite or Postgres memory store
+        directly, so a restart does not skip the delete. Raises
+        ``CHECKPOINT_DELETE_FAILED`` when persisted data could not be
+        removed. Returns normally when the store has nothing for this
+        thread. Callers should invoke this *before* removing their own
+        thread row, so a failure leaves the thread visible and retryable.
         """
+        row = self.get_row(agent_id)
+        harness = None
         try:
             harness = self.get_agent(agent_id)
-        except OctopError:
-            logger.warning(
-                "delete_thread_checkpoint: agent %r not running; skipping checkpoint cleanup for thread %r",
-                agent_id,
-                thread_id,
-            )
-            return False
-        adelete = getattr(harness, "adelete_thread", None)
-        if adelete is None:
-            return False
-        return bool(await adelete(thread_id))
+        except OctopError as exc:
+            if exc.code == ErrorCode.AGENT_NOT_FOUND or row is None:
+                raise
+            harness = None
+        if harness is not None:
+            adelete = getattr(harness, "adelete_thread", None)
+            if adelete is not None:
+                try:
+                    deleted = bool(await adelete(thread_id))
+                except OctopError:
+                    raise
+                except Exception as exc:
+                    raise OctopError(
+                        ErrorCode.CHECKPOINT_DELETE_FAILED,
+                        f"could not delete conversation data for thread {thread_id!r}",
+                    ) from exc
+                if deleted:
+                    await asyncio.to_thread(self._reclaim_thread_store, agent_id, thread_id, row)
+                    return
+        if row is None:
+            return
+        await asyncio.to_thread(self._delete_thread_from_store, agent_id, thread_id, row)
+
+    def _delete_thread_from_store(self, agent_id: str, thread_id: str, row: Any) -> None:
+        from octop.infra.agents.memory.thread_cleanup import (  # noqa: PLC0415
+            delete_stored_thread,
+            workspace_for_agent_row,
+        )
+
+        delete_stored_thread(
+            agent_id=agent_id,
+            thread_id=thread_id,
+            cfg=self._agent_config_dict(row),
+            octop_config=self._config,
+            workspace_dir=workspace_for_agent_row(row, paths=self._paths),
+        )
+
+    def _reclaim_thread_store(self, agent_id: str, thread_id: str, row: Any) -> None:
+        if row is None:
+            return
+        from octop.infra.agents.memory.thread_cleanup import (  # noqa: PLC0415
+            reclaim_stored_thread,
+            workspace_for_agent_row,
+        )
+
+        reclaim_stored_thread(
+            agent_id=agent_id,
+            thread_id=thread_id,
+            cfg=self._agent_config_dict(row),
+            octop_config=self._config,
+            workspace_dir=workspace_for_agent_row(row, paths=self._paths),
+        )
 
     # ------------------------------------------------------------------
     # Chat / invoke — stream, call, HITL, thread model overrides

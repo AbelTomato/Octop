@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useSyncExternalStore } from "react";
+import { useTranslation } from "react-i18next";
+import { message as antMessage } from "../../../utils/antdMessage";
+import { apiErrorMessage } from "../../../utils/apiError";
 import {
   normalizeThreadArtifacts,
   octopThreadsApi,
@@ -387,6 +390,7 @@ export function resetSessionStoreForTests() {
 }
 
 export function useSessions(agentId: string | null) {
+  const { t } = useTranslation();
   syncStoreToAgent(agentId);
   const { sessions, loading, hasMore, loadingMore } = useSyncExternalStore(
     subscribeSessionStore,
@@ -581,11 +585,12 @@ export function useSessions(agentId: string | null) {
         chatStore.removeSession(id);
         chatStore.emitSessionEvent({ kind: "sessionDeleted", sessionId: id });
         return true;
-      } catch {
+      } catch (error) {
+        antMessage.error(apiErrorMessage(error, t("sessions.deleteFailed"), t));
         return false;
       }
     },
-    [agentId],
+    [agentId, t],
   );
 
   const pinSession = useCallback(

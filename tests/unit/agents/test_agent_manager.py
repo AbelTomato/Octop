@@ -896,13 +896,10 @@ def test_is_bootstrapped_assumes_true_when_backend_check_fails(manager: AgentMan
 
 
 @pytest.mark.asyncio
-async def test_delete_thread_checkpoint_returns_false_when_agent_not_running(
-    manager: AgentManager,
-) -> None:
-    # Fresh fixture has no _harness_manager wired up — get_agent raises
-    # OctopError, which must be swallowed (checkpoint cleanup is best-effort).
-    result = await manager.delete_thread_checkpoint("NOPE", "thr_1")
-    assert result is False
+async def test_delete_thread_checkpoint_missing_agent_raises(manager: AgentManager) -> None:
+    with pytest.raises(OctopError) as exc:
+        await manager.delete_thread_checkpoint("NOPE", "thr_1")
+    assert exc.value.code == ErrorCode.AGENT_NOT_FOUND
 
 
 @pytest.mark.asyncio
@@ -917,12 +914,12 @@ async def test_delete_thread_checkpoint_delegates_to_harness_adelete_thread(
 
     result = await manager.delete_thread_checkpoint("AGT1", "thr_1")
 
-    assert result is True
+    assert result is None
     agent.adelete_thread.assert_awaited_once_with("thr_1")
 
 
 @pytest.mark.asyncio
-async def test_delete_thread_checkpoint_returns_false_when_harness_lacks_adelete_thread(
+async def test_delete_thread_checkpoint_opens_store_when_harness_cannot_delete(
     manager: AgentManager,
 ) -> None:
     agent = MagicMock(spec=[])  # no adelete_thread attribute at all
@@ -932,7 +929,7 @@ async def test_delete_thread_checkpoint_returns_false_when_harness_lacks_adelete
 
     result = await manager.delete_thread_checkpoint("AGT1", "thr_1")
 
-    assert result is False
+    assert result is None
 
 
 @pytest.mark.asyncio
@@ -946,8 +943,9 @@ async def test_delete_thread_checkpoint_propagates_unexpected_errors(
     harness_manager.get_agent.return_value = MagicMock(agent=agent)
     manager._harness_manager = harness_manager
 
-    with pytest.raises(RuntimeError, match="db unavailable"):
+    with pytest.raises(OctopError) as exc:
         await manager.delete_thread_checkpoint("AGT1", "thr_1")
+    assert exc.value.code == ErrorCode.CHECKPOINT_DELETE_FAILED
 
 
 @pytest.mark.asyncio

@@ -95,6 +95,7 @@
       "usage": "Usage: /delete <thread_short_id>",
       "not_found": "No thread matches {short!r}.",
       "active": "Cannot delete the active thread. Use /new first.",
+      "failed": "Could not delete this thread. It is still in the list; try again.",
       "done": "Deleted thread {short}."
     },
     "pin": {
@@ -393,6 +394,7 @@
     "SETUP_TOKEN_INVALID": "Setup session is invalid or expired. Verify the setup password again.",
     "AGENT_NOT_FOUND": "Agent not found.",
     "AGENT_NOT_RUNNING": "This expert is not enabled.",
+    "CHECKPOINT_DELETE_FAILED": "Conversation data was not deleted. The thread is still here; try again.",
     "AGENT_FAILED": "Agent failed to start.",
     "AGENT_BUSY": "Agent is busy.",
     "AGENT_NAME_TAKEN": "This name is already in use. Please choose another.",

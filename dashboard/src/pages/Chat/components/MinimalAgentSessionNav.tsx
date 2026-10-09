@@ -16,6 +16,8 @@ import {
 import type { OctopAgent } from "../../../context/AgentContext";
 import { ExpertIcon } from "../../Experts/components/iconForName";
 import { octopThreadsApi } from "../../../api/modules/octopThreads";
+import { message as antMessage } from "../../../utils/antdMessage";
+import { apiErrorMessage } from "../../../utils/apiError";
 import { showConfirmModal } from "../../../utils/confirmModal";
 import { isAgentChatReady } from "../../../utils/agentError";
 import { sortSessions, toSession, type Session } from "../hooks/useSessions";
@@ -444,11 +446,11 @@ export default function MinimalAgentSessionNav({
       try {
         await octopThreadsApi.delete(agentId, sessionId);
         patchLocal(agentId, (prev) => prev.filter((s) => s.id !== sessionId));
-      } catch {
-        /* ignore */
+      } catch (error) {
+        antMessage.error(apiErrorMessage(error, t("sessions.deleteFailed"), t));
       }
     },
-    [activeAgentId, onDeleteActive, patchLocal],
+    [activeAgentId, onDeleteActive, patchLocal, t],
   );
 
   const handleRename = useCallback(

@@ -95,6 +95,7 @@
       "usage": "用法：/delete <话题短 ID>",
       "not_found": "没有匹配 {short!r} 的话题。",
       "active": "无法删除当前活跃话题，请先 /new。",
+      "failed": "这个话题没有删掉，还在列表里，请再试一次。",
       "done": "已删除话题 {short}。"
     },
     "pin": {
@@ -393,6 +394,7 @@
     "SETUP_TOKEN_INVALID": "向导会话无效或已过期，请重新验证启动密码。",
     "AGENT_NOT_FOUND": "未找到 Agent。",
     "AGENT_NOT_RUNNING": "此专家未启用。",
+    "CHECKPOINT_DELETE_FAILED": "对话数据没有删除，会话已保留，请重试。",
     "AGENT_FAILED": "Agent 启动失败。",
     "AGENT_BUSY": "Agent 正忙。",
     "AGENT_NAME_TAKEN": "该名称已被使用，请换一个名称。",
