@@ -785,12 +785,44 @@ class UserManager:
         if agent_manager is not None:
             for agent in owned:
                 await agent_manager.delete(agent.agent_id)
+        else:
+            await asyncio.to_thread(self._purge_owned_stores, owned)
+            await asyncio.to_thread(self._remove_owned_dirs, owned)
         await asyncio.to_thread(self._remove_paths, workspaces)
         async with self._lock:
             self._users.pop(username, None)
         await asyncio.to_thread(self._remove_user_files, row.id, row.username)
         self._services.user_repo.delete(row.id)
         self._services.audit_repo.write(actor=ACTOR_ADMIN, action="user.delete", target=username)
+
+    def _purge_owned_stores(self, owned: builtins.list[Any]) -> None:
+        """CLI user delete has no harness. Still drop each agent's memory store."""
+        from octop.infra.agents.memory.thread_cleanup import (
+            agent_config_from_row,
+            delete_agent_memory_and_checkpoints,
+            workspace_for_agent_row,
+        )
+
+        for agent in owned:
+            delete_agent_memory_and_checkpoints(
+                agent_id=agent.agent_id,
+                thread_ids=self._services.thread_repo.list_ids_for_agent(agent.agent_id),
+                cfg=agent_config_from_row(agent),
+                octop_config=self._services.config,
+                workspace_dir=workspace_for_agent_row(agent, paths=self._services.paths),
+                paths=self._services.paths,
+            )
+
+    def _remove_owned_dirs(self, owned: builtins.list[Any]) -> None:
+        from octop.infra.agents.memory.thread_cleanup import agent_config_from_row
+        from octop.infra.agents.workspace.dir import remove_agent_host_dirs
+
+        for agent in owned:
+            remove_agent_host_dirs(
+                agent_config_from_row(agent),
+                paths=self._services.paths,
+                agent_id=agent.agent_id,
+            )
 
     def _owned_workspaces(self, owned: builtins.list[Any]) -> builtins.list[Path]:
         from octop.infra.agents.memory.thread_cleanup import workspace_for_agent_row

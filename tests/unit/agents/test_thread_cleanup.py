@@ -12,6 +12,7 @@ from octop.config import OctopConfig
 from octop.infra.agents.manager import AgentManager
 from octop.infra.agents.memory.thread_cleanup import (
     close_memory,
+    delete_agent_memory_and_checkpoints,
     delete_stored_thread,
     gc_orphan_checkpoints,
 )
@@ -65,6 +66,108 @@ def _checkpoint_count(path: Path, thread_id: str) -> int:
     finally:
         conn.close()
     return int(row[0])
+
+
+def test_sweep_removes_deleted_agent_dir_and_orphan_checkpoints(tmp_path: Path) -> None:
+    from octop.infra.agents.memory.thread_cleanup import sweep_deleted_residuals
+
+    services, db = _services(tmp_path)
+    paths = services.paths
+    try:
+        user_id = services.user_repo.create(username="alice", password_hash="x", role="admin")
+        services.agent_repo.create(agent_id="LIVE", user_id=user_id, name="live")
+        services.thread_repo.insert(
+            thread_id="thr_keep",
+            agent_id="LIVE",
+            user_id=user_id,
+            channel_type="dashboard",
+            session_key="keep",
+        )
+        live_db = paths.agent_workspace("LIVE") / "memory.sqlite"
+        _seed_checkpoint(live_db, "thr_keep")
+        _seed_checkpoint(live_db, "thr_gone")
+        gone = paths.root / "workspaces" / "GONE"
+        gone.mkdir(parents=True)
+        (gone / "notes.txt").write_text("old", encoding="utf-8")
+        manager = type(
+            "Manager",
+            (),
+            {"_repos": services.repos, "_paths": paths, "_config": services.config},
+        )()
+
+        listed = sweep_deleted_residuals(manager)
+        assert listed["directories"] == 0
+        assert listed["threads"] == 1
+        assert gone.exists()
+        assert str(gone) in listed["directory_paths"]
+        assert _checkpoint_count(live_db, "thr_keep") == 1
+        assert _checkpoint_count(live_db, "thr_gone") == 0
+
+        result = sweep_deleted_residuals(manager, remove_directories=True)
+
+        assert result["directories"] == 1
+        assert not gone.exists()
+    finally:
+        db.close()
+
+
+def test_thread_delete_clears_sqlite_file_outside_active_workspace(tmp_path: Path) -> None:
+    from octop.infra.utils.paths import PathLayout
+
+    paths = PathLayout(tmp_path / ".octop")
+    paths.ensure_root()
+    active = paths.agent_workspace("Ab1")
+    active.mkdir(parents=True)
+    other = paths.root / "workspaces" / "Ab1" / ".octop" / "memory.sqlite"
+    _seed_checkpoint(other, "thr_side")
+
+    from octop.infra.agents.memory.thread_cleanup import delete_thread_from_agent_stores
+
+    delete_thread_from_agent_stores(
+        agent_id="Ab1",
+        thread_id="thr_side",
+        cfg={"workspace_dir": str(active)},
+        octop_config=OctopConfig(),
+        workspace_dir=active,
+        paths=paths,
+    )
+
+    assert _checkpoint_count(other, "thr_side") == 0
+
+
+def test_delete_agent_drops_its_namespace_and_checkpoints(tmp_path: Path) -> None:
+    workspace = tmp_path / "ws"
+    db_path = workspace / "memory.sqlite"
+    _seed_checkpoint(db_path, "thr_gone")
+    from octop_memory.core import Memory
+
+    memory = Memory(
+        namespace="agent_ab1",
+        backend="sqlite",
+        backend_config={"db_path": str(db_path)},
+    )
+    close_memory(memory)
+    conn = sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE agent_other_keep (id INTEGER)")
+    conn.commit()
+    conn.close()
+
+    delete_agent_memory_and_checkpoints(
+        agent_id="Ab1",
+        thread_ids={"thr_gone"},
+        cfg={"memory": {"backend": {"type": "sqlite", "db_path": str(db_path)}}},
+        octop_config=OctopConfig(),
+        workspace_dir=workspace,
+    )
+
+    assert _checkpoint_count(db_path, "thr_gone") == 0
+    conn = sqlite3.connect(db_path)
+    try:
+        names = {str(row[0]) for row in conn.execute("SELECT name FROM sqlite_master")}
+    finally:
+        conn.close()
+    assert "agent_other_keep" in names
+    assert not any(name.startswith("agent_ab1_") for name in names)
 
 
 def test_delete_stored_thread_removes_rows_when_agent_is_stopped(tmp_path: Path) -> None:

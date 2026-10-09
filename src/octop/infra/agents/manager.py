@@ -806,11 +806,35 @@ class AgentManager:
         except Exception:
             logger.exception("abort team create: harness remove failed for %s", agent_id)
         try:
+            row = self._repos.agent_repo.get(agent_id)
             workspace_dir = self.resolve_workspace_dir(agent_id, persist_if_missing=False)
-            if await asyncio.to_thread(workspace_dir.exists):
+            if row is not None:
+                from octop.infra.agents.memory.thread_cleanup import (  # noqa: PLC0415
+                    agent_config_from_row,
+                    delete_agent_memory_and_checkpoints,
+                )
+
+                cfg = agent_config_from_row(row)
+                await asyncio.to_thread(
+                    delete_agent_memory_and_checkpoints,
+                    agent_id=agent_id,
+                    thread_ids=self._repos.thread_repo.list_ids_for_agent(agent_id),
+                    cfg=cfg,
+                    octop_config=self._config,
+                    workspace_dir=workspace_dir,
+                    paths=self._paths,
+                )
+                from octop.infra.agents.workspace.dir import remove_agent_host_dirs  # noqa: PLC0415
+
+                await asyncio.to_thread(
+                    remove_agent_host_dirs, cfg, paths=self._paths, agent_id=agent_id
+                )
+            elif await asyncio.to_thread(workspace_dir.exists):
                 await asyncio.to_thread(shutil.rmtree, workspace_dir)
         except OSError:
             logger.exception("abort team create: rmtree failed for %s", agent_id)
+        except Exception:
+            logger.exception("abort team create: memory purge failed for %s", agent_id)
         try:
             self._repos.agent_repo.delete(agent_id)
         except Exception:
@@ -931,14 +955,24 @@ class AgentManager:
         return updated
 
     async def delete(self, agent_id: str) -> None:
-        """Remove agent from DB, harness runtime, and workspace directory."""
+        """Remove agent from DB, harness runtime, workspace, memory, and checkpoints.
+
+        Checkpoint rows and Postgres memory namespaces are not foreign keys
+        of ``agents``. They are deleted before the agent row. If that purge
+        fails, the row stays so the delete can be retried.
+        """
         row = self._repos.agent_repo.get(agent_id)
         if row is None:
             raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
         self._teams.assert_can_delete_agent(agent_id)
+        from octop.infra.agents.memory.thread_cleanup import (  # noqa: PLC0415
+            agent_config_from_row,
+            delete_agent_memory_and_checkpoints,
+        )
         from octop.infra.agents.teams import is_team_agent
 
         affected_teams: list[str] = []
+        thread_ids = self._repos.thread_repo.list_ids_for_agent(agent_id)
         workspace_dir = self.resolve_workspace_dir(agent_id, persist_if_missing=False)
         async with self._lock:
             if not is_team_agent(row):
@@ -949,9 +983,22 @@ class AgentManager:
             await asyncio.to_thread(self._quiesce_octop_memory, agent_id)
             await self._harness_manager.aremove_agent(agent_id)  # type: ignore[union-attr]
         self._plugin_tool_labels.pop(agent_id, None)
+        cfg = agent_config_from_row(row)
+        await asyncio.to_thread(
+            delete_agent_memory_and_checkpoints,
+            agent_id=agent_id,
+            thread_ids=thread_ids,
+            cfg=cfg,
+            octop_config=self._config,
+            workspace_dir=workspace_dir,
+            paths=self._paths,
+        )
         try:
-            if await asyncio.to_thread(workspace_dir.exists):
-                await asyncio.to_thread(shutil.rmtree, workspace_dir)
+            from octop.infra.agents.workspace.dir import remove_agent_host_dirs  # noqa: PLC0415
+
+            await asyncio.to_thread(
+                remove_agent_host_dirs, cfg, paths=self._paths, agent_id=agent_id
+            )
         except OSError:
             logger.exception("rmtree failed for %s; agent removed from DB anyway", workspace_dir)
         self._repos.agent_repo.delete(agent_id)
@@ -1259,37 +1306,48 @@ class AgentManager:
             if exc.code == ErrorCode.AGENT_NOT_FOUND or row is None:
                 raise
             harness = None
+        live_error: Exception | None = None
         if harness is not None:
             adelete = getattr(harness, "adelete_thread", None)
             if adelete is not None:
                 try:
-                    deleted = bool(await adelete(thread_id))
+                    await adelete(thread_id)
                 except OctopError:
                     raise
                 except Exception as exc:
-                    raise OctopError(
-                        ErrorCode.CHECKPOINT_DELETE_FAILED,
-                        f"could not delete conversation data for thread {thread_id!r}",
-                    ) from exc
-                if deleted:
-                    await asyncio.to_thread(self._reclaim_thread_store, agent_id, thread_id, row)
-                    return
+                    live_error = exc
         if row is None:
+            if live_error is not None:
+                raise OctopError(
+                    ErrorCode.CHECKPOINT_DELETE_FAILED,
+                    f"could not delete conversation data for thread {thread_id!r}",
+                ) from live_error
             return
-        await asyncio.to_thread(self._delete_thread_from_store, agent_id, thread_id, row)
+        try:
+            await asyncio.to_thread(self._delete_thread_from_store, agent_id, thread_id, row)
+        except OctopError:
+            if live_error is not None:
+                raise OctopError(
+                    ErrorCode.CHECKPOINT_DELETE_FAILED,
+                    f"could not delete conversation data for thread {thread_id!r}",
+                ) from live_error
+            raise
 
     def _delete_thread_from_store(self, agent_id: str, thread_id: str, row: Any) -> None:
         from octop.infra.agents.memory.thread_cleanup import (  # noqa: PLC0415
-            delete_stored_thread,
+            delete_thread_from_agent_stores,
             workspace_for_agent_row,
         )
 
-        delete_stored_thread(
+        cfg = self._agent_config_dict(row)
+        workspace = workspace_for_agent_row(row, paths=self._paths)
+        delete_thread_from_agent_stores(
             agent_id=agent_id,
             thread_id=thread_id,
-            cfg=self._agent_config_dict(row),
+            cfg=cfg,
             octop_config=self._config,
-            workspace_dir=workspace_for_agent_row(row, paths=self._paths),
+            workspace_dir=workspace,
+            paths=self._paths,
         )
 
     def _reclaim_thread_store(self, agent_id: str, thread_id: str, row: Any) -> None:
@@ -2417,7 +2475,7 @@ class AgentManager:
         except ExceptionGroup as exc:
             # Starlette/anyio may wrap a single UnicodeDecodeError in a group.
             if not any(
-                isinstance(inner, (OSError, PermissionError, UnicodeDecodeError, UnicodeError))
+                isinstance(inner, OSError | PermissionError | UnicodeDecodeError | UnicodeError)
                 for inner in exc.exceptions
             ):
                 raise
@@ -3111,7 +3169,7 @@ class AgentManager:
             extra["quick_prompts"] = prompts if isinstance(prompts, list) else []
             if not (row_description or "").strip():
                 desc = data.get("description")
-                if isinstance(desc, (str, dict)) and desc:
+                if isinstance(desc, str | dict) and desc:
                     extra["description"] = desc
             break
         return extra
