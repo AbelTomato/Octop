@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import shutil
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
@@ -33,6 +34,14 @@ logger = logging.getLogger(__name__)
 # ~8MB at the default 4KB page size. Matches
 # octop_memory.pipeline.lifecycle.vacuum.DELETE_INCREMENTAL_VACUUM_PAGES.
 _DELETE_VACUUM_PAGES = 2000
+
+# Full VACUUM rewrites the file and needs about one extra copy on disk.
+_COMPACT_DISK_MARGIN_BYTES = 64 * 1024 * 1024
+_compact_disk_warned: set[str] = set()
+
+# Idle maintenance compacts a store once deleted rows leave at least this
+# much free space. Smaller holes stay on the hourly incremental pass.
+RECLAIM_MIN_FREELIST_BYTES = 8 * 1024 * 1024
 
 # Shared memory tables that carry a ``namespace`` column. Kept in sync with
 # octop_memory's postgres ``_TABLES``. ``meta`` is instance-wide and stays.
@@ -499,6 +508,137 @@ def _drop_sqlite_namespace(store: Any) -> None:
         if not name.endswith("_fts"):
             conn.execute(f"DROP TABLE IF EXISTS {_quote_ident(name)}")
     conn.commit()
+
+
+def sqlite_freelist_bytes(path: Path) -> int:
+    """Bytes sitting on SQLite's freelist. ``0`` when the file is missing."""
+    if not path.is_file():
+        return 0
+    try:
+        conn = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+    except (OSError, sqlite3.Error):
+        return 0
+    try:
+        page_row = conn.execute("PRAGMA page_size").fetchone()
+        free_row = conn.execute("PRAGMA freelist_count").fetchone()
+    except sqlite3.Error:
+        return 0
+    finally:
+        conn.close()
+    page = int(page_row[0] or 0) if page_row else 0
+    free = int(free_row[0] or 0) if free_row else 0
+    return page * free
+
+
+def agent_sqlite_freelist_bytes(
+    *,
+    agent_id: str,
+    cfg: dict[str, Any],
+    octop_config: OctopConfig,
+    workspace_dir: Path,
+    paths: Any | None = None,
+) -> int:
+    """Free-page bytes across this agent's SQLite memory files."""
+    found = _sqlite_memory_files(cfg, agent_id=agent_id, paths=paths, workspace_dir=workspace_dir)
+    _ns, _backend, _backend_config, primary = _memory_location(
+        agent_id=agent_id,
+        cfg=cfg,
+        octop_config=octop_config,
+        workspace_dir=workspace_dir,
+    )
+    if primary is not None:
+        found.append(primary)
+    total = 0
+    seen: set[Path] = set()
+    for path in found:
+        try:
+            resolved = path.resolve()
+        except OSError:
+            resolved = path
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        total += sqlite_freelist_bytes(resolved)
+    return total
+
+
+def _store_file_bytes(path: Path) -> int:
+    total = 0
+    for candidate in (path, Path(str(path) + "-wal"), Path(str(path) + "-shm")):
+        if candidate.is_file():
+            total += candidate.stat().st_size
+    return total
+
+
+def _disk_allows_compact(path: Path) -> bool:
+    """False when rewriting the file would need more free disk than remains."""
+    try:
+        free = shutil.disk_usage(path).free
+        need = _store_file_bytes(path) + _COMPACT_DISK_MARGIN_BYTES
+    except OSError:
+        logger.warning("compact disk check failed path=%s", path, exc_info=True)
+        return False
+    if free < need:
+        key = str(path)
+        if key not in _compact_disk_warned:
+            _compact_disk_warned.add(key)
+            logger.warning("skip compact path=%s free=%s need=%s", path, free, need)
+        return False
+    _compact_disk_warned.discard(str(path))
+    return True
+
+
+def compact_live_sqlite(memory: Any) -> bool:
+    """Rebuild one open SQLite memory store so deleted rows leave the file.
+
+    Returns True when the store is not SQLite, or the rebuild finished.
+    Returns False when disk is short or the rebuild failed, so the caller
+    can retry after the expert is idle. Postgres is left to autovacuum:
+    ``VACUUM FULL`` would lock checkpoint tables shared by every agent.
+    """
+    from octop_memory.storage.backends.sqlite import SqliteMemoryBackend
+
+    backend = getattr(memory, "_backend", None)
+    if not isinstance(backend, SqliteMemoryBackend):
+        return True
+    path = Path(backend._db_path)
+    if not path.is_file():
+        return True
+    if not _disk_allows_compact(path):
+        return False
+    try:
+        from octop_memory.pipeline.lifecycle.vacuum import compact_vacuum
+
+        compact_vacuum(memory)
+    except Exception:
+        logger.warning("compact failed path=%s", path, exc_info=True)
+        return False
+    return True
+
+
+def compact_agent_store_file(
+    *,
+    agent_id: str,
+    cfg: dict[str, Any],
+    octop_config: OctopConfig,
+    workspace_dir: Path,
+) -> bool:
+    """Open this agent's store and compact it. The agent must not be loaded."""
+    ns, backend, backend_config, sqlite_path = _memory_location(
+        agent_id=agent_id,
+        cfg=cfg,
+        octop_config=octop_config,
+        workspace_dir=workspace_dir,
+    )
+    if backend != "sqlite":
+        return True
+    if sqlite_path is None or not sqlite_path.is_file():
+        return True
+    memory = _open_memory(ns, backend, backend_config)
+    try:
+        return compact_live_sqlite(memory)
+    finally:
+        close_memory(memory)
 
 
 def _reclaim_sqlite(memory: Any, *, agent_id: str, thread_id: str) -> None:

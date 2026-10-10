@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
-import { message as antMessage } from "../../../utils/antdMessage";
-import { apiErrorMessage } from "../../../utils/apiError";
+import { deleteConversation } from "../utils/deleteConversation";
 import {
   normalizeThreadArtifacts,
   octopThreadsApi,
@@ -577,18 +576,14 @@ export function useSessions(agentId: string | null) {
   }, [agentId]);
 
   const deleteSession = useCallback(
-    async (id: string) => {
+    async (id: string, compact: boolean) => {
       if (!agentId || !id) return false;
-      try {
-        await octopThreadsApi.delete(agentId, id);
-        setModuleSessions((prev) => prev.filter((s) => s.id !== id));
-        chatStore.removeSession(id);
-        chatStore.emitSessionEvent({ kind: "sessionDeleted", sessionId: id });
-        return true;
-      } catch (error) {
-        antMessage.error(apiErrorMessage(error, t("sessions.deleteFailed"), t));
-        return false;
-      }
+      const deleted = await deleteConversation(agentId, id, compact, t);
+      if (!deleted) return false;
+      setModuleSessions((prev) => prev.filter((s) => s.id !== id));
+      chatStore.removeSession(id);
+      chatStore.emitSessionEvent({ kind: "sessionDeleted", sessionId: id });
+      return true;
     },
     [agentId, t],
   );

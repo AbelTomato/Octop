@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import threading
@@ -1097,6 +1098,38 @@ async def test_reload_agent_clears_bootstrap_refresh_pending(manager: AgentManag
 
     assert agent_id not in manager._bootstrap_graph_refresh_pending
     harness_manager.aremove_agent.assert_awaited_once_with(agent_id)
+
+
+@pytest.mark.asyncio
+async def test_compact_now_runs_when_idle(manager: AgentManager, monkeypatch: Any) -> None:
+    seen: list[str] = []
+
+    def _sync(agent_id: str) -> bool:
+        seen.append(agent_id)
+        return True
+
+    monkeypatch.setattr(manager, "_compact_agent_database_sync", _sync)
+    assert await manager.compact_agent_database("AGT1") is True
+    assert seen == ["AGT1"]
+    assert "AGT1" not in manager._reclaim_pending
+
+
+@pytest.mark.asyncio
+async def test_compact_now_defers_while_a_turn_is_running(
+    manager: AgentManager, monkeypatch: Any
+) -> None:
+    manager._active_invocations["AGT1"] = 1
+    monkeypatch.setattr(manager, "_compact_agent_database_sync", lambda _agent_id: True)
+    try:
+        assert await manager.compact_agent_database("AGT1", wait_s=0) is False
+        assert "AGT1" in manager._reclaim_pending
+    finally:
+        manager._reclaim_pending.clear()
+        task = manager._reclaim_task
+        if task is not None and not task.done():
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
 
 
 @pytest.mark.asyncio

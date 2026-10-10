@@ -12,9 +12,11 @@ from octop.config import OctopConfig
 from octop.infra.agents.manager import AgentManager
 from octop.infra.agents.memory.thread_cleanup import (
     close_memory,
+    compact_agent_store_file,
     delete_agent_memory_and_checkpoints,
     delete_stored_thread,
     gc_orphan_checkpoints,
+    sqlite_freelist_bytes,
 )
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.pool import SqlitePool
@@ -317,3 +319,60 @@ def test_remove_user_deletes_workspace_and_foreign_checkpoints(tmp_path: Path) -
         assert services.agent_repo.get("ag_alice") is not None
     finally:
         db.close()
+
+
+def test_compact_skips_when_disk_cannot_hold_a_rewrite(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = tmp_path / "ws"
+    db_path = workspace / "memory.sqlite"
+    _seed_checkpoint(db_path, "thr_big", b"x" * 4096)
+    delete_stored_thread(
+        agent_id="ag1",
+        thread_id="thr_big",
+        cfg={},
+        octop_config=OctopConfig(),
+        workspace_dir=workspace,
+    )
+
+    def _refuse_vacuum(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("VACUUM must not run when disk is short")
+
+    monkeypatch.setattr(
+        "octop.infra.agents.memory.thread_cleanup.shutil.disk_usage",
+        lambda _path: type("Usage", (), {"free": 1})(),
+    )
+    monkeypatch.setattr("octop_memory.pipeline.lifecycle.vacuum.compact_vacuum", _refuse_vacuum)
+    assert (
+        compact_agent_store_file(
+            agent_id="ag1",
+            cfg={},
+            octop_config=OctopConfig(),
+            workspace_dir=workspace,
+        )
+        is False
+    )
+    assert db_path.is_file()
+
+
+def test_compact_rebuilds_sqlite_after_delete(tmp_path: Path) -> None:
+    workspace = tmp_path / "ws"
+    db_path = workspace / "memory.sqlite"
+    _seed_checkpoint(db_path, "thr_big", b"x" * 8192)
+    delete_stored_thread(
+        agent_id="ag1",
+        thread_id="thr_big",
+        cfg={},
+        octop_config=OctopConfig(),
+        workspace_dir=workspace,
+    )
+    assert (
+        compact_agent_store_file(
+            agent_id="ag1",
+            cfg={},
+            octop_config=OctopConfig(),
+            workspace_dir=workspace,
+        )
+        is True
+    )
+    assert sqlite_freelist_bytes(db_path) == 0
