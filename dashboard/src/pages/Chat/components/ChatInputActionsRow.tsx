@@ -132,6 +132,10 @@ interface ChatInputActionsRowProps {
   uploading: boolean;
   recording: boolean;
   transcribing: boolean;
+  /** Realtime STT streams while held down, so the mic is press-and-hold. */
+  voiceHoldToTalk?: boolean;
+  onVoiceStart?: () => void;
+  onVoiceStop?: () => void;
   browserRecording?: boolean;
   browserReplayBusy?: boolean;
   browserLastRecordingId?: string | null;
@@ -195,6 +199,9 @@ export default function ChatInputActionsRow({
   uploading,
   recording,
   transcribing,
+  voiceHoldToTalk = false,
+  onVoiceStart,
+  onVoiceStop,
   browserRecording = false,
   browserReplayBusy = false,
   browserLastRecordingId = null,
@@ -243,6 +250,7 @@ export default function ChatInputActionsRow({
   const remoteManaged = Boolean(agentId?.startsWith("bridge:"));
   const skillDisplayName = useSkillDisplayName();
   const actionsRowRef = useRef<HTMLDivElement | null>(null);
+  const voiceHeldRef = useRef(false);
   const [plusMenuEl, setPlusMenuEl] = useState<HTMLDivElement | null>(null);
   const [plusPanelEl, setPlusPanelEl] = useState<HTMLDivElement | null>(null);
   const [plusPanelMaxHeight, setPlusPanelMaxHeight] = useState<number | null>(
@@ -256,6 +264,22 @@ export default function ChatInputActionsRow({
   const [reasoningModelRef, setReasoningModelRef] = useState<string | null>(
     null,
   );
+  /** Mobile-only bottom drawer for the overflow ("more") menu. */
+  const [mobileOverflowOpen, setMobileOverflowOpen] = useState(false);
+
+  // Press-and-hold dictation: start on pointerdown, finish on release or when
+  // the pointer slides off the button (also covers touch cancel).
+  const handleVoicePressStart = () => {
+    if (voiceHeldRef.current) return;
+    voiceHeldRef.current = true;
+    onVoiceStart?.();
+  };
+
+  const handleVoicePressEnd = () => {
+    if (!voiceHeldRef.current) return;
+    voiceHeldRef.current = false;
+    onVoiceStop?.();
+  };
   /** Plus-button menu (model / skills / …). */
   const [overflowPopoverOpen, setOverflowPopoverOpen] = useState(false);
   /** Picker panel opened from a plus-menu item. */
@@ -1142,6 +1166,10 @@ export default function ChatInputActionsRow({
           title={
             !_sttAvailable
               ? t("voice.sttNotAvailable", "此设备不支持语音输入（需要 HTTPS）")
+              : voiceHoldToTalk
+              ? recording
+                ? t("voice.releaseToStop", "松开结束")
+                : t("voice.holdToTalk", "按住说话")
               : recording
               ? t("voice.stopRecording", "停止录音")
               : transcribing
@@ -1155,8 +1183,29 @@ export default function ChatInputActionsRow({
               recording || transcribing ? styles.secondaryBtnActive : ""
             }`}
             type="button"
-            disabled={disabled || isStreaming || transcribing || !_sttAvailable}
-            onClick={onToggleVoice}
+            // Dictation only fills the composer, so it stays available while a
+            // reply is still streaming.
+            disabled={disabled || transcribing || !_sttAvailable}
+            onClick={voiceHoldToTalk ? undefined : onToggleVoice}
+            onPointerDown={
+              voiceHoldToTalk
+                ? (event) => {
+                    event.preventDefault();
+                    handleVoicePressStart();
+                  }
+                : undefined
+            }
+            onPointerUp={voiceHoldToTalk ? handleVoicePressEnd : undefined}
+            onPointerLeave={voiceHoldToTalk ? handleVoicePressEnd : undefined}
+            onPointerCancel={voiceHoldToTalk ? handleVoicePressEnd : undefined}
+            onContextMenu={
+              voiceHoldToTalk ? (event) => event.preventDefault() : undefined
+            }
+            style={
+              voiceHoldToTalk
+                ? { touchAction: "none", userSelect: "none" }
+                : undefined
+            }
           >
             <Mic size={16} />
           </button>
