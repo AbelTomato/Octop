@@ -15,7 +15,7 @@
 <p align="center">
   <a href="https://www.python.org/downloads/"><img alt="Python 3.12+" src="https://img.shields.io/badge/python-3.12%2B-blue?logo=python&logoColor=white" /></a>
   <a href="https://github.com/TencentCloud/Octop/blob/main/LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green" /></a>
-  <a href="https://github.com/TencentCloud/Octop/releases"><img alt="Version" src="https://img.shields.io/badge/version-1.0.2b5-orange" /></a>
+  <a href="https://github.com/TencentCloud/Octop/releases"><img alt="Version" src="https://img.shields.io/badge/version-1.0.2b6-orange" /></a>
   <a href="https://pypi.org/project/octop/"><img src="https://img.shields.io/pypi/v/octop" alt="PyPI" /></a>
   <a href="https://github.com/astral-sh/ruff"><img alt="Code Style: Ruff" src="https://img.shields.io/badge/code%20style-ruff-000000?logo=ruff&logoColor=white" /></a>
   <a href="https://github.com/TencentCloud/Octop"><img alt="GitHub stars" src="https://img.shields.io/github/stars/TencentCloud/Octop?style=social" /></a>
@@ -229,7 +229,7 @@ See [scripts/README.md](scripts/README.md) for all install options (`--version`,
 | Windows | `Octop-desktop-windows-amd64-<version>.exe` (64-bit) / `Octop-desktop-windows-arm64-<version>.exe` (ARM64) — NSIS installer |
 | macOS | `Octop-desktop-darwin-arm64-<version>.dmg` (Apple Silicon) / `Octop-desktop-darwin-amd64-<version>.dmg` (Intel) |
 | Linux | `Octop-desktop-linux-amd64-<version>.tar.gz` / `Octop-desktop-linux-arm64-<version>.tar.gz` |
-| FnOS NAS | `Octop-fnos-docker-<version>.fpk` (Docker-backed) / `Octop-fnos-native-<version>.fpk` (no Docker) — install via App Center |
+| FnOS NAS | `Octop-fnos-docker-<version>.fpk` (recommended on ARM; amd64/arm64 image) / `Octop-fnos-native-<version>.fpk` (x86_64, no Docker) / `Octop-fnos-native-arm64-<version>.fpk` (ARM64 fallback if no Docker) — install via App Center |
 
 See [desktop/README.md](desktop/README.md) for the desktop shell and [fnos/README.md](fnos/README.md) for the FnOS packaging guide.
 
@@ -270,7 +270,7 @@ octop run --host 0.0.0.0 --port 8088
 octop service start
 ```
 
-Open **http://127.0.0.1:8088**. With Docker, the first init generates a random admin password (written to `/data/.octop/credential.txt`) unless `OCTOP_DEFAULT_PASSWORD` is set. Interactive `octop init` / the setup wizard asks you to choose a password (≥8 characters, letters and digits).
+Open **http://127.0.0.1:8088**. With Docker, a valid `OCTOP_DEFAULT_PASSWORD` creates the admin on first boot (credentials in `/data/.octop/credential.txt`); if it is unset or rejected, open the setup wizard (unlock password in `/data/.octop/octop-login.txt`). Interactive `octop init` / the setup wizard asks you to choose a password (≥8 characters, letters and digits).
 
 ### Docker (recommended for production)
 
@@ -284,18 +284,18 @@ docker run -d \
   -p 8088:8088 \
   -v octop-data:/data/.octop \
   -e HOME=/data \
-  -e OCTOP_DEFAULT_PASSWORD="<strong-password-or-omit-for-random>" \
+  -e OCTOP_DEFAULT_PASSWORD="<strong-password-or-omit-for-setup-wizard>" \
   octop:latest
 ```
 
-Open `http://localhost:8088`. First boot creates the admin account and writes the credentials to `/data/.octop/credential.txt` in the container. With `OCTOP_DEFAULT_PASSWORD` unset a strong random password is generated; a password you set must be ≥8 characters with letters and digits (weak/common passwords are rejected by the app password policy and fall back to a random one). Override the username via `OCTOP_ADMIN_USERNAME`.
+Open `http://localhost:8088`. A valid `OCTOP_DEFAULT_PASSWORD` creates the admin on first boot and writes credentials to `/data/.octop/credential.txt`. If it is unset or rejected by the password policy, no admin is created — complete the setup wizard (unlock password in `/data/.octop/octop-login.txt`). Override the username via `OCTOP_ADMIN_USERNAME`.
 
 > **Password policy:** at least 8 characters with letters and digits.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `OCTOP_PORT` | `8088` | HTTP listen port |
-| `OCTOP_DEFAULT_PASSWORD` | _(unset)_ | First-run admin password (Docker bootstrap). Unset = random password written to `credential.txt` |
+| `OCTOP_DEFAULT_PASSWORD` | _(unset)_ | First-run admin password (Docker bootstrap). Valid → create admin; unset or rejected → setup wizard |
 | `OCTOP_ADMIN_USERNAME` | `admin` | First-run admin username |
 | `OCTOP_DATA` | `~/.octop` | Host data directory (compose bind mount) |
 
@@ -551,6 +551,7 @@ See [CHANGELOG.md](CHANGELOG.md) for release history.
 | [Octop Gateway](https://github.com/TencentCloud/octop-gateway) | Multi-platform IM channel bridge |
 | [Octop Memory](https://github.com/TencentCloud/octop-memory) | Hierarchical recall and FTS search |
 | [Octop Browser](https://github.com/TencentCloud/octop-browser) | CDP browser automation with persistent profiles |
+| [Octop Pet](https://github.com/jubaoliang/OctopPet) | A desktop pet for Octop |
 
 ## 💬 Community
 

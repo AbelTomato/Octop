@@ -37,7 +37,6 @@ import { prepareSpeechText } from "../../../utils/plainTextForSpeech";
 import {
   chatStreamErrorAction,
   formatChatStreamError,
-  isChatStreamError,
 } from "../../../utils/chatStreamError";
 import { MessageFileCard } from "./MessageFileCard";
 import AskQuestionCard from "./AskQuestionCard";
@@ -50,10 +49,8 @@ import {
   isTeamHostSpeaker as isTeamHostSpeakerId,
 } from "../../../utils/teamAgent";
 import { rewritePeerSpeakerId } from "../../../utils/remoteExpert";
-import {
-  accountDisplayName,
-  accountInitials,
-} from "../utils/accountDisplayName";
+import { accountDisplayName } from "../utils/accountDisplayName";
+import { ProfileAvatar } from "../../Admin/Users/ProfileAvatar";
 import {
   extractAskQuestions,
   isAskHitl,
@@ -84,6 +81,8 @@ interface MessageBubbleProps {
   agentId?: string | null;
   composerLookups?: ComposerTagLookups;
   onRegenerate?: (messageId: string) => void;
+  /** Turn off streamed token usage then retry (invalid_request / MindIE). */
+  onDisableStreamUsage?: () => Promise<boolean>;
   onEditUserMessage?: (messageId: string, newText: string) => void;
   onForkAssistantMessage?: (messageId: string) => void;
   forkDisabled?: boolean;
@@ -536,6 +535,7 @@ function MessageBubble({
   agentId = null,
   composerLookups,
   onRegenerate,
+  onDisableStreamUsage,
   onEditUserMessage,
   onForkAssistantMessage,
   forkDisabled,
@@ -632,9 +632,9 @@ function MessageBubble({
     const actions = message.hitlData.action_requests ?? [];
     const hitlStatus = message.hitlData.status ?? "pending";
     if (isAskHitl(actions)) {
-      // Pending questions are rendered in ChatPage's composer dock so they
-      // stay immediately above the input even when message history scrolls.
-      if (hitlStatus === "pending") return null;
+      // Recoverable pending questions stay in ChatPage's composer dock.
+      // Reconstructed history without pending_id stays in the transcript.
+      if (hitlStatus === "pending" && message.hitlData.pending_id) return null;
       const questions = extractAskQuestions(actions);
       return (
         <div
@@ -643,21 +643,7 @@ function MessageBubble({
           }`}
         >
           <div className={styles.bubbleContent}>
-            <AskQuestionCard
-              questions={questions}
-              status={hitlStatus}
-              onSubmit={
-                onHitlDecision
-                  ? (answer) =>
-                      onHitlDecision(
-                        actions.map(() => ({
-                          type: "respond",
-                          message: answer,
-                        })),
-                      )
-                  : undefined
-              }
-            />
+            <AskQuestionCard questions={questions} status={hitlStatus} />
           </div>
         </div>
       );
@@ -685,9 +671,7 @@ function MessageBubble({
     isUser && !isEditing && hasUserComposerTags(message.composerContext);
   const isStreaming = message.status === "streaming";
   const hasToolData = !!message.toolData;
-  const looksLikeStreamError =
-    !isUser && !hasToolData && !isStreaming && isChatStreamError(textContent);
-  const isError = message.status === "error" || looksLikeStreamError;
+  const isError = message.status === "error";
   const errorBodyText = isError
     ? formatChatStreamError(textContent, t)
     : textContent;
@@ -758,9 +742,12 @@ function MessageBubble({
     <MessageSender
       name={userName}
       avatar={
-        <span className={styles.msgUserAvatar}>
-          {accountInitials(userName)}
-        </span>
+        <ProfileAvatar
+          url={user?.avatar_url}
+          icon={user?.avatar_icon}
+          kind="user"
+          className={styles.msgUserAvatar}
+        />
       }
     />
   ) : expert || avatarProfileId ? (
@@ -899,7 +886,21 @@ function MessageBubble({
                 )}
                 {(errorAction || onRegenerate) && (
                   <div className={styles.errorActionRow}>
-                    {errorAction && (
+                    {errorAction?.fix === "disable_stream_usage" &&
+                    onDisableStreamUsage ? (
+                      <button
+                        className={styles.errorRetryBtn}
+                        onClick={() => {
+                          void onDisableStreamUsage().then((ok) => {
+                            if (ok) onRegenerate?.(message.id);
+                          });
+                        }}
+                        type="button"
+                      >
+                        <RotateCcw size={13} />
+                        {t(errorAction.labelKey)}
+                      </button>
+                    ) : errorAction ? (
                       <button
                         className={styles.errorConfigBtn}
                         onClick={() => navigate(errorAction.path)}
@@ -908,7 +909,7 @@ function MessageBubble({
                         <Settings size={13} />
                         {t(errorAction.labelKey)}
                       </button>
-                    )}
+                    ) : null}
                     {onRegenerate && (
                       <button
                         className={styles.errorRetryBtn}
