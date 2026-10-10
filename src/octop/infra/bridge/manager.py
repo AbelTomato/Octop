@@ -21,7 +21,19 @@ from octop.infra.bridge.ids import (
     rewrite_peer_agent_ids,
     rewrite_peer_stream_frame,
 )
-from octop.infra.bridge.peer_auth import login_peer, normalize_peer_base_url, peer_ws_url
+from octop.infra.bridge.peer_auth import (
+    is_self_peer_url,
+    login_peer,
+    normalize_peer_base_url,
+    peer_identity_key,
+    peer_ws_url,
+)
+from octop.infra.bridge.peer_turn import (
+    PeerBrowserRunner,
+    PeerTurnRejected,
+    PeerTurnRunner,
+    bridge_turn_ws_payload,
+)
 from octop.infra.bridge.transport import BridgeSession
 from octop.infra.db.repos.bridge_connections import BridgeConnectionRepo, BridgeConnectionRow
 from octop.infra.db.repos.secrets import SecretRepo
@@ -34,6 +46,9 @@ logger = logging.getLogger(__name__)
 # Auto-reconnect: backoff after unexpected disconnect; disable after this many failures.
 _AUTO_RECONNECT_MAX_FAILURES = 5
 _AUTO_RECONNECT_BACKOFF_SEC = (2.0, 4.0, 8.0, 16.0, 30.0)
+MAX_CONNECTIONS_PER_USER = 10
+# Outbound supervisor is already redialing — wait this long before failing the request.
+_RECONNECT_GRACE_SEC = 5.0
 
 
 def _is_inbound(row: BridgeConnectionRow) -> bool:
@@ -41,19 +56,8 @@ def _is_inbound(row: BridgeConnectionRow) -> bool:
     return not bool(row.credential_blob)
 
 
-def _bridge_turn_ws_payload(payload: dict[str, Any]) -> dict[str, Any]:
-    """Copy dashboard turn fields off a ``turn.start`` frame.
-
-    Hub relays the full ``user_turn`` body; dropping keys here would silently
-    ignore knowledge bases, HITL policy, and conversation mode.
-    """
-    from octop.api.routers.chat.models import UserTurnWsFrame
-
-    fields = UserTurnWsFrame.model_fields
-    out = {key: value for key, value in payload.items() if key in fields}
-    out["type"] = "user_turn"
-    out.setdefault("text", payload.get("text") or "")
-    return out
+# Re-export for existing unit tests.
+_bridge_turn_ws_payload = bridge_turn_ws_payload
 
 
 def _looks_like_endpoint_label(name: str) -> bool:
@@ -149,13 +153,28 @@ class BridgeManager:
         self._browser_waiters: dict[str, asyncio.Queue[dict[str, Any]]] = {}
         self._browser_peer_clients: dict[str, asyncio.Queue[dict[str, Any] | None]] = {}
         self._asgi_app: Any | None = None
+        self._peer_turn_runner: PeerTurnRunner | None = None
+        self._peer_browser_runner: PeerBrowserRunner | None = None
         self._lock = asyncio.Lock()
         # Manual disconnect / intentional stop — do not auto-reconnect until connect().
         self._user_stopped: set[str] = set()
         self._reconnect_failures: dict[str, int] = {}
 
-    def bind_asgi_app(self, app: Any) -> None:
+    def bind_asgi_app(
+        self,
+        app: Any,
+        *,
+        peer_turn_runner: PeerTurnRunner | None = None,
+        peer_browser_runner: PeerBrowserRunner | None = None,
+    ) -> None:
+        """Attach the local ASGI app and optional HTTP-layer peer runners.
+
+        ``peer_turn_runner`` / ``peer_browser_runner`` are provided by
+        ``api.app`` so this module never imports ``octop.api``.
+        """
         self._asgi_app = app
+        self._peer_turn_runner = peer_turn_runner
+        self._peer_browser_runner = peer_browser_runner
 
     def set_token_signer(self, signer: Any) -> None:
         self._token_signer = signer
@@ -173,6 +192,54 @@ class BridgeManager:
         if row is None:
             raise OctopError(ErrorCode.BRIDGE_NOT_FOUND, "bridge connection not found")
         return row
+
+    def _find_peer_link(
+        self,
+        owner_user_id: int,
+        peer_base_url: str,
+        peer_username: str,
+        *,
+        exclude_connection_id: str | None = None,
+    ) -> BridgeConnectionRow | None:
+        want = peer_identity_key(peer_base_url, peer_username)
+        for row in self._repo.list_for_owner(owner_user_id):
+            if exclude_connection_id and row.connection_id == exclude_connection_id:
+                continue
+            try:
+                if peer_identity_key(row.peer_base_url, row.peer_username) == want:
+                    return row
+            except OctopError:
+                continue
+        return None
+
+    def _validate_peer_endpoint(
+        self,
+        owner_user_id: int,
+        peer_base_url: str,
+        peer_username: str,
+        *,
+        exclude_connection_id: str | None = None,
+    ) -> None:
+        if is_self_peer_url(peer_base_url, self._advertise_base_url):
+            raise OctopError(
+                ErrorCode.BRIDGE_SELF_CONNECT,
+                "cannot link this Octop instance to itself",
+            )
+        other = self._find_peer_link(
+            owner_user_id,
+            peer_base_url,
+            peer_username,
+            exclude_connection_id=exclude_connection_id,
+        )
+        if other is not None:
+            raise OctopError(
+                ErrorCode.BRIDGE_PEER_ALREADY_LINKED,
+                f"already linked as {other.display_name!r}",
+                details={"name": other.display_name, "connection_id": other.connection_id},
+            )
+
+    def _at_connection_limit(self, owner_user_id: int) -> bool:
+        return len(self._repo.list_for_owner(owner_user_id)) >= MAX_CONNECTIONS_PER_USER
 
     def _allocate_display_name(
         self,
@@ -333,6 +400,13 @@ class BridgeManager:
         icon = (icon_name or "").strip() or None
         if not username or not password:
             raise OctopError(ErrorCode.BRIDGE_AUTH_FAILED, "username and password required")
+        self._validate_peer_endpoint(owner_user_id, base, username)
+        if self._at_connection_limit(owner_user_id):
+            raise OctopError(
+                ErrorCode.BRIDGE_CONNECTION_LIMIT,
+                f"at most {MAX_CONNECTIONS_PER_USER} cloud collab connections",
+                details={"limit": MAX_CONNECTIONS_PER_USER},
+            )
         if not name:
             raise OctopError(
                 ErrorCode.FORBIDDEN,
@@ -574,6 +648,14 @@ class BridgeManager:
             assert peer_base_url is not None
             next_base = normalize_peer_base_url(peer_base_url)
 
+        if url_changed or user_changed:
+            self._validate_peer_endpoint(
+                owner_user_id,
+                next_base,
+                next_user,
+                exclude_connection_id=connection_id,
+            )
+
         login = await login_peer(base_url=next_base, username=next_user, password=secret)
         token = str(login["access_token"])
         expires_in = int(login.get("expires_in") or 0)
@@ -743,7 +825,13 @@ class BridgeManager:
         url = peer_ws_url(peer_base_url, token=token)
         session: BridgeSession | None = None
         try:
-            async with websockets.connect(url, open_timeout=20, max_size=32 * 1024 * 1024) as ws:
+            async with websockets.connect(
+                url,
+                open_timeout=20,
+                max_size=32 * 1024 * 1024,
+                ping_interval=20,
+                ping_timeout=20,
+            ) as ws:
                 owner = self._repo.get(connection_id)
                 local_user = self._users.get(owner.owner_user_id) if owner is not None else None
                 hello = {
@@ -781,14 +869,20 @@ class BridgeManager:
                         )
                     break
 
+                async def close_transport() -> None:
+                    with suppress(Exception):
+                        await ws.close()
+
                 session = BridgeSession(
                     connection_id=connection_id,
                     send_text=ws.send,
                     on_tunnel_request=lambda p: self._handle_inbound_tunnel(connection_id, p),
                     on_turn_frame=lambda p: self._handle_inbound_turn(connection_id, p),
                     on_browser_frame=lambda p: self._handle_inbound_browser(connection_id, p),
+                    close_transport=close_transport,
                 )
                 await self._register_session(connection_id, session)
+                session.start_heartbeat()
                 if self._repo.get(connection_id) is not None:
                     self._repo.update_status(
                         connection_id, status="connected", last_error=None, touch_seen=True
@@ -820,6 +914,10 @@ class BridgeManager:
         async def send_text(text: str) -> None:
             await websocket.send_text(text)
 
+        async def close_transport() -> None:
+            with suppress(Exception):
+                await websocket.close()
+
         try:
             raw = await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
             payload = json.loads(raw)
@@ -845,9 +943,20 @@ class BridgeManager:
         except OctopError:
             advertise_base = "http://127.0.0.1"
 
+        if is_self_peer_url(advertise_base, self._advertise_base_url):
+            await websocket.close(code=4004, reason="self connect")
+            return
+
         existing = self._repo.get(connection_id)
         if existing is not None and int(existing.owner_user_id) != int(user.id):
             await websocket.close(code=4003, reason="connection owned by another user")
+            return
+        by_peer = self._find_peer_link(int(user.id), advertise_base, advertise_user)
+        if existing is None and by_peer is not None:
+            connection_id = by_peer.connection_id
+            existing = by_peer
+        if existing is None and self._at_connection_limit(int(user.id)):
+            await websocket.close(code=4008, reason="connection limit")
             return
         preferred = inbound_default_display_name(
             connection_id=connection_id,
@@ -876,8 +985,10 @@ class BridgeManager:
             on_tunnel_request=lambda p: self._handle_inbound_tunnel(connection_id, p),
             on_turn_frame=lambda p: self._handle_inbound_turn(connection_id, p),
             on_browser_frame=lambda p: self._handle_inbound_browser(connection_id, p),
+            close_transport=close_transport,
         )
         await self._register_session(connection_id, session)
+        session.start_heartbeat()
         await session.send_json(
             {
                 "type": "hello_ack",
@@ -925,6 +1036,35 @@ class BridgeManager:
             raise OctopError(ErrorCode.BRIDGE_NOT_CONNECTED, "bridge not connected")
         return sess
 
+    async def _require_live_session(self, connection_id: str) -> BridgeSession:
+        """Return a live session. Drop a half-open one; wait briefly if we can redial."""
+        sess = self._sessions.get(connection_id)
+        if sess is not None and not sess.closed and sess.is_stale():
+            logger.warning(
+                "bridge session stale connection=%s idle=%.0fs; dropping",
+                connection_id,
+                sess.idle_seconds(),
+            )
+            await self._unregister_session(connection_id)
+            sess = None
+        if sess is not None and not sess.closed:
+            return sess
+        supervisor = self._client_tasks.get(connection_id)
+        if supervisor is None or supervisor.done():
+            raise OctopError(ErrorCode.BRIDGE_NOT_CONNECTED, "bridge not connected")
+        deadline = asyncio.get_running_loop().time() + _RECONNECT_GRACE_SEC
+        while asyncio.get_running_loop().time() < deadline:
+            live = self._sessions.get(connection_id)
+            if live is not None and not live.closed:
+                return live
+            await asyncio.sleep(0.1)
+        raise OctopError(ErrorCode.BRIDGE_NOT_CONNECTED, "bridge not connected")
+
+    def _bridge_link_error(self, exc: BaseException) -> OctopError:
+        if isinstance(exc, TimeoutError):
+            return OctopError(ErrorCode.BRIDGE_TUNNEL_FAILED, str(exc) or "bridge tunnel timeout")
+        return OctopError(ErrorCode.BRIDGE_NOT_CONNECTED, "bridge not connected")
+
     async def tunnel_http(
         self,
         *,
@@ -945,14 +1085,18 @@ class BridgeManager:
                 ErrorCode.BRIDGE_REMOTE_UNSUPPORTED,
                 "This action is not available through the remote bridge. Manage it on the peer Octop.",
             )
-        sess = self.require_session(connection_id)
-        result = await sess.tunnel_request(
-            method=method,
-            path=path,
-            query=query,
-            headers=headers,
-            body=body,
-        )
+        sess = await self._require_live_session(connection_id)
+        try:
+            result = await sess.tunnel_request(
+                method=method,
+                path=path,
+                query=query,
+                headers=headers,
+                body=body,
+            )
+        except (TimeoutError, ConnectionError) as exc:
+            await self._unregister_session(connection_id)
+            raise self._bridge_link_error(exc) from exc
         if str(result.get("type") or "") == "tunnel.error":
             code_raw = str(result.get("code") or "").strip()
             if code_raw == ErrorCode.BRIDGE_REMOTE_UNSUPPORTED.value:
@@ -1235,12 +1379,6 @@ class BridgeManager:
 
     async def _execute_peer_turn(self, connection_id: str, payload: dict[str, Any]) -> None:
         """Peer asked us to run a turn on a local agent; stream chunks back."""
-        from octop.api.routers.chat.models import UserTurnWsFrame
-        from octop.api.routers.chat.turn import (
-            build_dashboard_inbound,
-            prepare_dashboard_turn,
-            turn_has_content,
-        )
         from octop.infra.gateway.ws import WS_CHANNEL_ID
         from octop.infra.gateway.ws.ws_hub import stamp_thread_id
 
@@ -1296,32 +1434,25 @@ class BridgeManager:
         async def send_frame(frame: dict[str, Any]) -> None:
             await chunk_queue.put(frame)
 
+        runner = self._peer_turn_runner
+        if runner is None:
+            await sess.send_json(
+                {
+                    "type": "turn.error",
+                    "request_id": request_id,
+                    "message": "peer turn runner not wired",
+                }
+            )
+            return
+
         hub.register(bridge_conn_id, send_frame, user_id=user.id)
         try:
-            frame = UserTurnWsFrame.model_validate(_bridge_turn_ws_payload(payload))
-            turn = frame.to_turn_body()
-            if not turn_has_content(turn):
-                await sess.send_json(
-                    {
-                        "type": "turn.error",
-                        "request_id": request_id,
-                        "message": "empty message",
-                    }
-                )
-                return
-            prepared = await prepare_dashboard_turn(
-                server,
-                agent_id=agent_id,
+            prepared = await runner(
+                server=server,
                 user=user,
-                turn=turn,
-            )
-            inbound = build_dashboard_inbound(
                 agent_id=agent_id,
-                user_id=user.id,
-                prepared=prepared,
-                turn=turn,
+                payload=payload,
                 ws_connection_id=bridge_conn_id,
-                user_is_admin=bool(getattr(user, "is_admin", False)),
             )
             hub.subscribe(prepared.thread_id, bridge_conn_id)
             await sess.send_json(
@@ -1334,10 +1465,14 @@ class BridgeManager:
                     },
                 }
             )
-            channel_manager.enqueue(WS_CHANNEL_ID, inbound)
+            channel_manager.enqueue(WS_CHANNEL_ID, prepared.inbound)
             while True:
+                if sess.closed:
+                    break
                 item = await chunk_queue.get()
                 if item is None:
+                    break
+                if sess.closed:
                     break
                 stamped = stamp_thread_id(item, prepared.thread_id)
                 await sess.send_json(
@@ -1350,6 +1485,14 @@ class BridgeManager:
                 if str(stamped.get("type") or "") in {"done", "error"}:
                     break
             await sess.send_json({"type": "turn.end", "request_id": request_id})
+        except PeerTurnRejected as exc:
+            await sess.send_json(
+                {
+                    "type": "turn.error",
+                    "request_id": request_id,
+                    "message": str(exc)[:500],
+                }
+            )
         except Exception as exc:
             logger.exception("bridge peer turn failed")
             await sess.send_json(
@@ -1375,7 +1518,7 @@ class BridgeManager:
         import uuid
 
         self.get_owned(connection_id, owner_user_id)
-        sess = self.require_session(connection_id)
+        sess = await self._require_live_session(connection_id)
         request_id = uuid.uuid4().hex
         queue = await self.open_turn_waiter(request_id)
         try:
@@ -1388,7 +1531,7 @@ class BridgeManager:
                 }
             )
             while True:
-                msg = await asyncio.wait_for(queue.get(), timeout=600.0)
+                msg = await sess.next_queue_item(queue, timeout=600.0)
                 msg_type = str(msg.get("type") or "")
                 if msg_type == "turn.chunk":
                     frame = msg.get("frame")
@@ -1408,9 +1551,12 @@ class BridgeManager:
                         }
                     )
                     await on_frame({"type": "done"})
-                    break
+                    return
                 elif msg_type == "turn.end":
-                    break
+                    return
+        except (TimeoutError, ConnectionError) as exc:
+            await self._unregister_session(connection_id)
+            raise self._bridge_link_error(exc) from exc
         finally:
             self.close_turn_waiter(request_id)
 
@@ -1455,8 +1601,6 @@ class BridgeManager:
 
     async def _execute_peer_browser(self, connection_id: str, payload: dict[str, Any]) -> None:
         """Peer asked us to attach to the local browser harness and stream frames."""
-        from octop.api.routers.browser.stream import run_browser_stream_session
-
         request_id = str(payload.get("request_id") or "").strip()
         sess = self._sessions.get(connection_id)
         if sess is None or not request_id:
@@ -1506,8 +1650,20 @@ class BridgeManager:
         else:
             start_msg = {**start_msg, "type": "start"}
 
+        runner = self._peer_browser_runner
+        if runner is None:
+            await sess.send_json(
+                {
+                    "type": "browser.error",
+                    "request_id": request_id,
+                    "message": "peer browser runner not wired",
+                }
+            )
+            await sess.send_json({"type": "browser.end", "request_id": request_id})
+            return
+
         try:
-            await run_browser_stream_session(
+            await runner(
                 send_json=send_json,
                 is_connected=is_connected,
                 receive_text=receive_text,
@@ -1548,7 +1704,7 @@ class BridgeManager:
         import uuid
 
         self.get_owned(connection_id, owner_user_id)
-        sess = self.require_session(connection_id)
+        sess = await self._require_live_session(connection_id)
         request_id = uuid.uuid4().hex
         queue = await self.open_browser_waiter(request_id)
 
@@ -1593,7 +1749,7 @@ class BridgeManager:
             forward_task = asyncio.create_task(forward_client())
 
             while True:
-                msg = await asyncio.wait_for(queue.get(), timeout=600.0)
+                msg = await sess.next_queue_item(queue, timeout=600.0)
                 msg_type = str(msg.get("type") or "")
                 if msg_type == "browser.server":
                     frame = msg.get("frame")
@@ -1610,9 +1766,11 @@ class BridgeManager:
                     break
                 elif msg_type == "browser.end":
                     break
-        except TimeoutError:
+        except (TimeoutError, ConnectionError):
             await on_frame({"type": "error", "message": "bridge browser timed out"})
             await on_frame({"type": "status", "status": "error"})
+            with suppress(Exception):
+                await self._unregister_session(connection_id)
         finally:
             self.close_browser_waiter(request_id)
             if forward_task is not None:
