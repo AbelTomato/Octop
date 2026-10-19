@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 import pytest
 
@@ -64,6 +64,13 @@ def test_workspace_plan_path_rewrites_container_root(tmp_path: Path) -> None:
     assert workspace_plan_path(expected, ws) == expected
     assert workspace_plan_path("SOUL.md", ws) == "SOUL.md"
     assert workspace_plan_path("plans/foo.md", "D:/octop/agents/ABC") == "plans/foo.md"
+
+
+def test_workspace_plan_path_rewrites_windows_host_path() -> None:
+    ws = PureWindowsPath("C:/Users/runner/AppData/Local/Temp/agent")
+    assert workspace_plan_path("plans/foo.md", ws) == (
+        "C:/Users/runner/AppData/Local/Temp/agent/plans/foo.md"
+    )
 
 
 posix_only = pytest.mark.skipif(
